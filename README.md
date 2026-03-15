@@ -9,9 +9,9 @@
 - [About](#about)
 - [How it works](#how-it-works)
 - [Features](#features)
+- [IMPORTANT NOTE](#IMPORTANT-NOTE)
 - [Changelog](#changelog)
 - [Requirements](#requirements)
-- [Note](#NOTE)
 - [Installation](#installation)
     - [Clone from Github](#clone-from-github)
     - [Download from Marketplace](#download-from-marketplace)
@@ -66,7 +66,22 @@ MoviePlayer is registered to PreLoadMap and PostLoadMapWithWorld delegates so it
 - Automatically handles all level transitions.
 - Integrates seamlessly with an existing project.
 
+# IMPORTANT NOTE
+- Texture Group should be set to UI and Compression Settings to UserInterface2D
+  <img width="616" height="377" alt="image" src="https://github.com/user-attachments/assets/3f3e90e5-6f35-4390-99b2-685446d9545c" />
+- Don't package the Movies folder into the .Pak file because MoviePlayer needs to look for the startup movies folder at "Contents/Movies" path
+- Make sure you don’t have any plugins enabled that conflict with ASL. For example, **Pre-Load Screen Movie Player**
+
 # Changelog
+
+### Version 1.6.0 (12/01/2026)
+![image](https://github.com/user-attachments/assets/1f58c5f0-71e3-49d1-baae-9f4a4f9cf808)
+
+- Fix the loading icon's wrong size at the first frame of the startup loading screen
+- Add settings for changing the Background and TipText during the loading screen
+- Set **UpdateInterval** value larger than 0.0 in the Background and TipText settings to update them during the loading screen
+- You need to have more than one BG and Tiptext element. And they will be updated randomly.
+- Remove the PreloadBackgroundImages setting
 
 ### Version 1.5.0 (6/4/2023)
 - Add "PreloadBackgroundImages" option
@@ -115,10 +130,6 @@ Example:
 
 ~~Async Loading Screen plug-in requires Visual Studio and a C++ code project. If your project is blueprint based then you will need to convert it to C++ project otherwise you cannot package your game with code plug-in.~~ It doesn't require c++ project anymore.
 
-# NOTE
-- Texture Group should be set to UI and Compression Settings to UserInterface2D
-  <img width="616" height="377" alt="image" src="https://github.com/user-attachments/assets/3f3e90e5-6f35-4390-99b2-685446d9545c" />
-- Don't package the Movies folder into the .Pak file because MoviePlayer needs to look for the startup movies folder at "Contents/Movies" path
 
 # Installation
 
