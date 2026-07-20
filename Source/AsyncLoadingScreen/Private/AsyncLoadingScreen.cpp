@@ -14,6 +14,7 @@
 #include "SLetterboxLayout.h"
 #include "SSidebarLayout.h"
 #include "SDualSidebarLayout.h"
+#include "SStrategicMapLayout.h"
 #include "Framework/Application/SlateApplication.h"
 #include "AsyncLoadingScreenLibrary.h"
 #include "Engine/Texture2D.h"
@@ -113,7 +114,11 @@ void FAsyncLoadingScreenModule::SetupLoadingScreen(const FALoadingScreenSettings
 		{
 			const ULoadingScreenSettings* Settings = GetDefault<ULoadingScreenSettings>();
 
-			switch (LoadingScreenSettings.Layout)
+			if (UAsyncLoadingScreenLibrary::IsStrategicMapLoadingScreenEnabled())
+			{
+				LoadingScreen.WidgetLoadingScreen = SNew(SStrategicMapLayout, LoadingScreenSettings);
+			}
+			else switch (LoadingScreenSettings.Layout)
 			{
 			case EAsyncLoadingScreenLayout::ALSL_Classic:
 				LoadingScreen.WidgetLoadingScreen = SNew(SClassicLayout, LoadingScreenSettings, Settings->Classic);

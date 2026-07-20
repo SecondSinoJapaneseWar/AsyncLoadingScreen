@@ -10,7 +10,22 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "UObject/StrongObjectPtr.h"
 #include "AsyncLoadingScreenLibrary.generated.h"
+
+class UTexture2D;
+
+/** Runtime-only data used by the optional strategic-map loading layout. */
+struct ASYNCLOADINGSCREEN_API FStrategicMapLoadingScreenData
+{
+	UTexture2D* Background = nullptr;
+	FVector4 GameViewportRectPixels = FVector4(0.0, 0.0, 1.0, 1.0);
+	bool bAnchorBackgroundToRight = false;
+	FText PrimaryTitle;
+	FText PrimaryBody;
+	FText SecondaryTitle;
+	FText SecondaryBody;
+};
 
 /**
  * Async Loading Screen Function Library
@@ -24,6 +39,9 @@ private:
 	static int32 DisplayTipTextIndex;
 	static int32 DisplayMovieIndex;	
 	static bool  bShowLoadingScreen;
+	static bool bUseStrategicMapLoadingScreen;
+	static TStrongObjectPtr<UTexture2D> StrategicMapBackground;
+	static FStrategicMapLoadingScreenData StrategicMapLoadingScreenData;
 public:
 	
 	/**
@@ -59,6 +77,31 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen")
 	static void SetEnableLoadingScreen(bool bIsEnableLoadingScreen);
 
+	/**
+	 * Configure the next loading screen as an aspect-correct strategic map.
+	 *
+	 * GameViewport* values are source-texture pixels. The highlighted frame is
+	 * painted outside this rectangle so the gameplay image itself is never covered.
+	 * Anchor-to-right crops the left side first (East Asia); false crops the right
+	 * side first (Europe).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen|Strategic Map")
+	static void SetStrategicMapLoadingScreen(
+		UTexture2D* Background,
+		float GameViewportLeft,
+		float GameViewportTop,
+		float GameViewportWidth,
+		float GameViewportHeight,
+		bool bAnchorBackgroundToRight,
+		FText PrimaryTitle,
+		FText PrimaryBody,
+		FText SecondaryTitle,
+		FText SecondaryBody);
+
+	/** Restore the layout selected in project settings for subsequent travel. */
+	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen|Strategic Map")
+	static void ClearStrategicMapLoadingScreen();
+
 
 	/**
 	 * Get enable/disable the loading screen for next levels
@@ -78,5 +121,7 @@ public:
 	static inline int32 GetDisplayBackgroundIndex() { return DisplayBackgroundIndex; }
 	static inline int32 GetDisplayTipTextIndex() { return DisplayTipTextIndex; }
 	static inline int32 GetDisplayMovieIndex() { return DisplayMovieIndex; }
+	static inline bool IsStrategicMapLoadingScreenEnabled() { return bUseStrategicMapLoadingScreen; }
+	static inline const FStrategicMapLoadingScreenData& GetStrategicMapLoadingScreenData() { return StrategicMapLoadingScreenData; }
 
 };
