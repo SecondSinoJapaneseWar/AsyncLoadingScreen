@@ -13,38 +13,41 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Engine/Texture2D.h"
 #include "AsyncLoadingScreenLibrary.h"
-#include "AsyncLoadingScreen.h"
 
 void SBackgroundWidget::Construct(const FArguments& InArgs, const FBackgroundSettings& Settings)
 {
-	Images = Settings.Images;
 	Interval = Settings.UpdateInterval;
 
-	// If there's an image defined
-	if (Images.Num() > 0)
+	ImageBrushList.Empty();
+	for (auto& Image : Settings.Images)
 	{
-		int32 ImageIndex = FMath::RandRange(0, Images.Num() - 1);
+		if (Image != nullptr)
+		{
+			ImageBrushList.Add(FDeferredCleanupSlateBrush::CreateBrush(Image));
+		}
+	}
+
+	// Pick the image to display, if any is defined
+	int32 ImageIndex = INDEX_NONE;
+	if (ImageBrushList.Num() > 0)
+	{
+		ImageIndex = FMath::RandRange(0, ImageBrushList.Num() - 1);
 
 		if (Settings.bSetDisplayBackgroundManually == true)
 		{
-			if (Images.IsValidIndex(UAsyncLoadingScreenLibrary::GetDisplayBackgroundIndex()))
+			if (ImageBrushList.IsValidIndex(UAsyncLoadingScreenLibrary::GetDisplayBackgroundIndex()))
 			{
 				ImageIndex = UAsyncLoadingScreenLibrary::GetDisplayBackgroundIndex();
+				// A manually chosen background stays on screen; disable the random interval refresh
+				Interval = 0.0f;
 			}
-		}		
-		
-		// Load background from settings
-		UTexture2D* LoadingImage = nullptr;
-		const FSoftObjectPath& ImageAsset = Images[ImageIndex];
-		UObject* ImageObject = ImageAsset.TryLoad();
-		LoadingImage = Cast<UTexture2D>(ImageObject);	
-		
-		if (LoadingImage)
-		{
-			ImageBrush = FDeferredCleanupSlateBrush::CreateBrush(LoadingImage);
-			ChildSlot
-			[
-				SNew(SBorder)
+		}
+	}
+
+	// Always build the border so the background color renders even when no image is defined
+	ChildSlot
+		[
+			SNew(SBorder)
 				.HAlign(HAlign_Fill)
 				.VAlign(VAlign_Fill)
 				.Padding(Settings.Padding)
@@ -52,39 +55,28 @@ void SBackgroundWidget::Construct(const FArguments& InArgs, const FBackgroundSet
 				.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
 				[
 					SNew(SScaleBox)
-					.Stretch(Settings.ImageStretch)
-					[
-						BackgroundWidget = SNew(SImage)
-						.Image(ImageBrush.IsValid() ? ImageBrush->GetSlateBrush() : nullptr)						
-					]
+						.Stretch(Settings.ImageStretch)
+						[
+							BackgroundWidget = SNew(SImage)
+								.Image(ImageIndex != INDEX_NONE ? ImageBrushList[ImageIndex]->GetSlateBrush() : nullptr)
+						]
 				]
-			];			
-		}
-	}
+		];
 }
 
 int32 SBackgroundWidget::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
 	// Update the images if Interval > 0 and Images has more than one element
-	if (Interval > 0.0f && Images.Num() > 1)
+	if (Interval > 0.0f && ImageBrushList.Num() > 1)
 	{
 		TotalDeltaTime += Args.GetDeltaTime();
 
 		if (TotalDeltaTime >= Interval)
 		{
-			int32 ImageIndex = FMath::RandRange(0, Images.Num() - 1);
+			int32 ImageIndex = FMath::RandRange(0, ImageBrushList.Num() - 1);
 
 			// Load background from settings
-			UTexture2D* LoadingImage = nullptr;
-			const FSoftObjectPath& ImageAsset = Images[ImageIndex];
-			UObject* ImageObject = ImageAsset.TryLoad();
-			LoadingImage = Cast<UTexture2D>(ImageObject);
-			
-			if (LoadingImage)
-			{
-				ImageBrush = FDeferredCleanupSlateBrush::CreateBrush(LoadingImage);
-				StaticCastSharedRef<SImage>(BackgroundWidget)->SetImage(ImageBrush.IsValid() ? ImageBrush->GetSlateBrush() : nullptr);				
-			}
+			StaticCastSharedRef<SImage>(BackgroundWidget)->SetImage(ImageBrushList[ImageIndex]->GetSlateBrush());
 
 			TotalDeltaTime = 0.0f;
 		}

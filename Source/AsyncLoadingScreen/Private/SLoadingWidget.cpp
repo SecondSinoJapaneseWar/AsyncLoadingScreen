@@ -13,6 +13,7 @@
 #include "Engine/Texture2D.h"
 #include "MoviePlayer.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Widgets/Text/STextBlock.h"
 
 int32 SLoadingWidget::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {		
@@ -40,10 +41,11 @@ int32 SLoadingWidget::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedG
 				ImageIndex = CleanupBrushList.Num() - 1;
 			}
 
-			StaticCastSharedRef<SImage>(LoadingIcon)->SetImage(CleanupBrushList[ImageIndex].IsValid() ? CleanupBrushList[ImageIndex]->GetSlateBrush() : nullptr);			
+			StaticCastSharedRef<SImage>(LoadingIcon)->SetImage(CleanupBrushList[ImageIndex]->GetSlateBrush());
 		}
 
-		TotalDeltaTime = 0.0f;
+		// Keep the remainder so updates track the configured interval, without a catch-up burst after a long frame
+		TotalDeltaTime = (Interval > 0.0f) ? FMath::Fmod(TotalDeltaTime, Interval) : 0.0f;
 	}
 	
 
@@ -63,21 +65,23 @@ void SLoadingWidget::ConstructLoadingIcon(const FLoadingWidgetSettings& Settings
 {
 	if (Settings.LoadingIconType == ELoadingIconType::LIT_ImageSequence)
 	{
-		// Loading Widget is image sequence
-		if (Settings.ImageSequenceSettings.Images.Num() > 0)
+		CleanupBrushList.Empty();
+		ImageIndex = 0;
+
+		FVector2D Scale = Settings.ImageSequenceSettings.Scale;
+
+		for (auto& Image : Settings.ImageSequenceSettings.Images)
 		{
-			CleanupBrushList.Empty();
-			ImageIndex = 0;
-
-			FVector2D Scale = Settings.ImageSequenceSettings.Scale;
-
-			for (auto Image: Settings.ImageSequenceSettings.Images)
+			if (Image != nullptr)
 			{
-				if (Image)
-				{
-					CleanupBrushList.Add(FDeferredCleanupSlateBrush::CreateBrush(Image, FVector2D(Image->GetSurfaceWidth() * Scale.X, Image->GetSurfaceHeight() * Scale.Y)));					
-				}				
+				CleanupBrushList.Add(FDeferredCleanupSlateBrush::CreateBrush(Image, FVector2D(Image->GetSurfaceWidth() * Scale.X, Image->GetSurfaceHeight() * Scale.Y)));
 			}
+		}
+
+		// Loading Widget is image sequence
+		if (CleanupBrushList.Num() > 0)
+		{
+			
 		
 			// Create Image slate widget
 			LoadingIcon = SNew(SImage)
@@ -118,11 +122,24 @@ void SLoadingWidget::ConstructLoadingIcon(const FLoadingWidgetSettings& Settings
 	// Hide loading widget when level loading is done if bHideLoadingWidgetWhenCompletes is true 
 	if (Settings.bHideLoadingWidgetWhenCompletes)
 	{		
-		SetVisibility(TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateRaw(this, &SLoadingWidget::GetLoadingWidgetVisibility)));
+		SetVisibility(TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateSP(this, &SLoadingWidget::GetLoadingWidgetVisibility)));
 	}	
 }
 
 EVisibility SLoadingWidget::GetLoadingWidgetVisibility() const
 {
 	return GetMoviePlayer()->IsLoadingFinished() ? EVisibility::Hidden : EVisibility::Visible;
+}
+
+TSharedRef<SWidget> SLoadingWidget::MakeLoadingTextWidget(const FLoadingWidgetSettings& Settings)
+{
+	// Collapse the text so it takes no space when it is empty
+	return SNew(STextBlock)
+		.Visibility(Settings.LoadingText.IsEmpty() ? EVisibility::Collapsed : EVisibility::SelfHitTestInvisible)
+		.ColorAndOpacity(Settings.Appearance.ColorAndOpacity)
+		.Font(Settings.Appearance.Font)
+		.ShadowOffset(Settings.Appearance.ShadowOffset)
+		.ShadowColorAndOpacity(Settings.Appearance.ShadowColorAndOpacity)
+		.Justification(Settings.Appearance.Justification)
+		.Text(Settings.LoadingText);
 }
