@@ -10,14 +10,31 @@
 #include "AsyncLoadingScreenLibrary.h"
 #include "MoviePlayer.h"
 #include "Engine/Texture2D.h"
+#include "HAL/PlatformTime.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Misc/ScopeLock.h"
 
 int32 UAsyncLoadingScreenLibrary::DisplayBackgroundIndex = -1;
 int32 UAsyncLoadingScreenLibrary::DisplayTipTextIndex = -1;
 int32 UAsyncLoadingScreenLibrary::DisplayMovieIndex = -1;
 bool  UAsyncLoadingScreenLibrary::bShowLoadingScreen = true;
 bool UAsyncLoadingScreenLibrary::bUseStrategicMapLoadingScreen = false;
+bool UAsyncLoadingScreenLibrary::bWaitForGameplayReady = false;
+bool UAsyncLoadingScreenLibrary::bLoadingProgressTrackingActive = false;
 TStrongObjectPtr<UTexture2D> UAsyncLoadingScreenLibrary::StrategicMapBackground;
 FStrategicMapLoadingScreenData UAsyncLoadingScreenLibrary::StrategicMapLoadingScreenData;
+FCriticalSection UAsyncLoadingScreenLibrary::LoadingProgressMutex;
+FText UAsyncLoadingScreenLibrary::LoadingStageText;
+FText UAsyncLoadingScreenLibrary::LoadingDetailText;
+FString UAsyncLoadingScreenLibrary::LoadingHistoryKey;
+double UAsyncLoadingScreenLibrary::LoadingStartedAtSeconds = 0.0;
+float UAsyncLoadingScreenLibrary::LoadingExpectedDurationSeconds = 12.0f;
+float UAsyncLoadingScreenLibrary::LoadingReportedProgress = 0.0f;
+
+namespace
+{
+	const TCHAR* LoadingHistorySection = TEXT("AsyncLoadingScreen.LoadingHistory");
+}
 
 void UAsyncLoadingScreenLibrary::SetDisplayBackgroundIndex(int32 BackgroundIndex)
 {
@@ -86,6 +103,7 @@ void UAsyncLoadingScreenLibrary::SetStrategicMapLoadingScreen(
 	bUseStrategicMapLoadingScreen = IsValid(Background)
 		&& GameViewportWidth > 0.0f
 		&& GameViewportHeight > 0.0f;
+	bWaitForGameplayReady = bUseStrategicMapLoadingScreen;
 
 	StrategicMapBackground.Reset(bUseStrategicMapLoadingScreen ? Background : nullptr);
 	StrategicMapLoadingScreenData.Background = StrategicMapBackground.Get();
@@ -104,12 +122,129 @@ void UAsyncLoadingScreenLibrary::SetStrategicMapLoadingScreen(
 void UAsyncLoadingScreenLibrary::ClearStrategicMapLoadingScreen()
 {
 	bUseStrategicMapLoadingScreen = false;
+	bWaitForGameplayReady = false;
 	StrategicMapBackground.Reset();
 	StrategicMapLoadingScreenData = FStrategicMapLoadingScreenData();
 }
 
+void UAsyncLoadingScreenLibrary::SetWaitForGameplayReady(const bool bShouldWait)
+{
+	bWaitForGameplayReady = bShouldWait;
+}
+
+void UAsyncLoadingScreenLibrary::BeginLoadingProgressTracking()
+{
+	const FString ProfileKey = StrategicMapLoadingScreenData.bAnchorBackgroundToRight
+		? TEXT("EastAsia")
+		: TEXT("Europe");
+	float HistoricalSeconds = ProfileKey == TEXT("EastAsia") ? 14.0f : 11.0f;
+	if (GConfig)
+	{
+		GConfig->GetFloat(
+			LoadingHistorySection,
+			*(ProfileKey + TEXT("AverageSeconds")),
+			HistoricalSeconds,
+			GGameUserSettingsIni);
+	}
+
+	FScopeLock Lock(&LoadingProgressMutex);
+	bLoadingProgressTrackingActive = true;
+	LoadingHistoryKey = ProfileKey;
+	LoadingStartedAtSeconds = FPlatformTime::Seconds();
+	LoadingExpectedDurationSeconds = FMath::Clamp(HistoricalSeconds, 2.0f, 120.0f);
+	LoadingReportedProgress = 0.02f;
+	LoadingStageText = FText::FromString(TEXT("正在载入战区地图"));
+	LoadingDetailText = FText::FromString(FString::Printf(
+		TEXT("依据历史记录预计约 %.1f 秒；正在解析地图包与依赖资源"),
+		LoadingExpectedDurationSeconds));
+}
+
+void UAsyncLoadingScreenLibrary::UpdateLoadingProgress(
+	FText Stage,
+	FText Detail,
+	const float Progress)
+{
+	FScopeLock Lock(&LoadingProgressMutex);
+	if (!bLoadingProgressTrackingActive)
+	{
+		return;
+	}
+	LoadingStageText = MoveTemp(Stage);
+	LoadingDetailText = MoveTemp(Detail);
+	LoadingReportedProgress = FMath::Max(
+		LoadingReportedProgress,
+		FMath::Clamp(Progress, 0.0f, 0.99f));
+}
+
+float UAsyncLoadingScreenLibrary::GetEstimatedLoadingProgress()
+{
+	FScopeLock Lock(&LoadingProgressMutex);
+	if (!bLoadingProgressTrackingActive)
+	{
+		return 0.0f;
+	}
+	const float ElapsedSeconds = static_cast<float>(
+		FPlatformTime::Seconds() - LoadingStartedAtSeconds);
+	// During the opaque map-package load UE has no trustworthy item count. Use
+	// the learned duration only up to 70%; observable readiness stages own 70-100%.
+	const float TimeEstimate = FMath::Min(
+		0.70f,
+		0.70f * ElapsedSeconds / FMath::Max(LoadingExpectedDurationSeconds, 0.1f));
+	return FMath::Clamp(FMath::Max(LoadingReportedProgress, TimeEstimate), 0.0f, 1.0f);
+}
+
+FText UAsyncLoadingScreenLibrary::GetLoadingStageText()
+{
+	FScopeLock Lock(&LoadingProgressMutex);
+	return LoadingStageText;
+}
+
+FText UAsyncLoadingScreenLibrary::GetLoadingDetailText()
+{
+	FScopeLock Lock(&LoadingProgressMutex);
+	return LoadingDetailText;
+}
+
 void UAsyncLoadingScreenLibrary::StopLoadingScreen()
 {
+	FString CompletedHistoryKey;
+	float CompletedSeconds = 0.0f;
+	{
+		FScopeLock Lock(&LoadingProgressMutex);
+		if (bLoadingProgressTrackingActive)
+		{
+			CompletedHistoryKey = LoadingHistoryKey;
+			CompletedSeconds = static_cast<float>(
+				FPlatformTime::Seconds() - LoadingStartedAtSeconds);
+			LoadingReportedProgress = 1.0f;
+			LoadingStageText = FText::FromString(TEXT("战区已就绪"));
+			LoadingDetailText = FText::FromString(TEXT("正在部署指挥界面"));
+			bLoadingProgressTrackingActive = false;
+		}
+	}
+
+	if (GConfig && !CompletedHistoryKey.IsEmpty() && CompletedSeconds > 0.0f)
+	{
+		const FString AverageKey = CompletedHistoryKey + TEXT("AverageSeconds");
+		const FString SamplesKey = CompletedHistoryKey + TEXT("Samples");
+		float PreviousAverage = CompletedSeconds;
+		int32 PreviousSamples = 0;
+		GConfig->GetFloat(
+			LoadingHistorySection, *AverageKey, PreviousAverage, GGameUserSettingsIni);
+		GConfig->GetInt(
+			LoadingHistorySection, *SamplesKey, PreviousSamples, GGameUserSettingsIni);
+		// Keep early samples responsive, then use an exponential moving average so
+		// driver/content changes are learned without one outlier wrecking the bar.
+		const float Blend = PreviousSamples < 4
+			? 1.0f / static_cast<float>(PreviousSamples + 1)
+			: 0.20f;
+		const float NewAverage = FMath::Lerp(PreviousAverage, CompletedSeconds, Blend);
+		GConfig->SetFloat(
+			LoadingHistorySection, *AverageKey, NewAverage, GGameUserSettingsIni);
+		GConfig->SetInt(
+			LoadingHistorySection, *SamplesKey, PreviousSamples + 1, GGameUserSettingsIni);
+		GConfig->Flush(false, GGameUserSettingsIni);
+	}
 	GetMoviePlayer()->StopMovie();
 }
 

@@ -9,6 +9,7 @@
 #include "Slate/DeferredCleanupSlateBrush.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Images/SThrobber.h"
+#include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SDPIScaler.h"
 #include "Widgets/Layout/SSafeZone.h"
@@ -244,6 +245,62 @@ namespace StrategicMapLoadingScreen
 			.FillHeight(1.0f)
 			[
 				SNew(SSpacer)
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.0f, 12.0f, 0.0f, 5.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([]
+					{
+						return UAsyncLoadingScreenLibrary::GetLoadingStageText();
+					})
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 18))
+					.ColorAndOpacity(FLinearColor(0.88f, 0.81f, 0.58f, 1.0f))
+					.AutoWrapText(true)
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(12.0f, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([]
+					{
+						return FText::AsPercent(
+							UAsyncLoadingScreenLibrary::GetEstimatedLoadingProgress());
+					})
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 18))
+					.ColorAndOpacity(FLinearColor(0.88f, 0.81f, 0.58f, 1.0f))
+				]
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, 8.0f)
+			[
+				SNew(STextBlock)
+				.Text_Lambda([]
+				{
+					return UAsyncLoadingScreenLibrary::GetLoadingDetailText();
+				})
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 14))
+				.ColorAndOpacity(FLinearColor(0.65f, 0.69f, 0.64f, 1.0f))
+				.AutoWrapText(true)
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, 12.0f)
+			[
+				SNew(SProgressBar)
+				.Percent_Lambda([]
+				{
+					return TOptional<float>(
+						UAsyncLoadingScreenLibrary::GetEstimatedLoadingProgress());
+				})
+				.FillColorAndOpacity(Brass)
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()

@@ -9,6 +9,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HAL/CriticalSection.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "UObject/StrongObjectPtr.h"
 #include "AsyncLoadingScreenLibrary.generated.h"
@@ -40,8 +41,17 @@ private:
 	static int32 DisplayMovieIndex;	
 	static bool  bShowLoadingScreen;
 	static bool bUseStrategicMapLoadingScreen;
+	static bool bWaitForGameplayReady;
+	static bool bLoadingProgressTrackingActive;
 	static TStrongObjectPtr<UTexture2D> StrategicMapBackground;
 	static FStrategicMapLoadingScreenData StrategicMapLoadingScreenData;
+	static FCriticalSection LoadingProgressMutex;
+	static FText LoadingStageText;
+	static FText LoadingDetailText;
+	static FString LoadingHistoryKey;
+	static double LoadingStartedAtSeconds;
+	static float LoadingExpectedDurationSeconds;
+	static float LoadingReportedProgress;
 public:
 	
 	/**
@@ -102,6 +112,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen|Strategic Map")
 	static void ClearStrategicMapLoadingScreen();
 
+	/**
+	 * Keep the next loading screen alive after map travel while the new world
+	 * performs BeginPlay, streaming, and other first-frame initialization.
+	 * The game must call StopLoadingScreen once its local scene is ready.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen")
+	static void SetWaitForGameplayReady(bool bShouldWait);
+
+	/** Updates the visible stage and the known lower bound of the progress bar. */
+	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen")
+	static void UpdateLoadingProgress(
+		FText Stage,
+		FText Detail,
+		float Progress);
+
 
 	/**
 	 * Get enable/disable the loading screen for next levels
@@ -118,10 +143,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen")
 	static void StopLoadingScreen();
 
+	/** Internal movie-player hook. Starts one empirical timing sample. */
+	static void BeginLoadingProgressTracking();
+
+	/** Thread-safe Slate bindings used while the game thread is loading. */
+	static float GetEstimatedLoadingProgress();
+	static FText GetLoadingStageText();
+	static FText GetLoadingDetailText();
+
 	static inline int32 GetDisplayBackgroundIndex() { return DisplayBackgroundIndex; }
 	static inline int32 GetDisplayTipTextIndex() { return DisplayTipTextIndex; }
 	static inline int32 GetDisplayMovieIndex() { return DisplayMovieIndex; }
 	static inline bool IsStrategicMapLoadingScreenEnabled() { return bUseStrategicMapLoadingScreen; }
+	static inline bool IsWaitingForGameplayReady() { return bWaitForGameplayReady; }
 	static inline const FStrategicMapLoadingScreenData& GetStrategicMapLoadingScreenData() { return StrategicMapLoadingScreenData; }
 
 };

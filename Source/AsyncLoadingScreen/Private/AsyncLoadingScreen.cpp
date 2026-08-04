@@ -103,6 +103,19 @@ void FAsyncLoadingScreenModule::SetupLoadingScreen(const FALoadingScreenSettings
 	LoadingScreen.MoviePaths = MoviesList;
 	LoadingScreen.PlaybackType = LoadingScreenSettings.PlaybackType;
 
+	// Map-package loading completes before gameplay BeginPlay/streaming work has
+	// necessarily settled. Strategic transitions therefore remain on the movie
+	// player while the new world ticks, and gameplay explicitly releases them.
+	if (!bIsStartupLoadingScreen
+		&& UAsyncLoadingScreenLibrary::IsWaitingForGameplayReady())
+	{
+		UAsyncLoadingScreenLibrary::BeginLoadingProgressTracking();
+		LoadingScreen.bAutoCompleteWhenLoadingCompletes = false;
+		LoadingScreen.bWaitForManualStop = true;
+		LoadingScreen.bAllowEngineTick = true;
+		LoadingScreen.bMoviesAreSkippable = false;
+	}
+
 	if (LoadingScreenSettings.bShowWidgetOverlay)
 	{
 		if (LoadingScreenSettings.bAllowInEarlyStartup)
