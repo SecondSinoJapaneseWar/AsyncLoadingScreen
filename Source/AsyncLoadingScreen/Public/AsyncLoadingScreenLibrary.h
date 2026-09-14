@@ -87,14 +87,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen")
 	static void SetEnableLoadingScreen(bool bIsEnableLoadingScreen);
 
-	/**
-	 * Configure the next loading screen as an aspect-correct strategic map.
-	 *
-	 * GameViewport* values are source-texture pixels. The highlighted frame is
-	 * painted outside this rectangle so the gameplay image itself is never covered.
-	 * Anchor-to-right crops the left side first (East Asia); false crops the right
-	 * side first (Europe).
-	 */
+	// Configure the next loading screen as an aspect-correct strategic map.
+	// GameViewport* values are source-texture pixels. The highlighted frame is
+	// painted outside this rectangle so the gameplay image itself is never covered.
+	// Anchor-to-right crops the left side first (East Asia); false crops the right
+	// side first (Europe).
 	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen|Strategic Map")
 	static void SetStrategicMapLoadingScreen(
 		UTexture2D* Background,
@@ -119,6 +116,14 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen")
 	static void SetWaitForGameplayReady(bool bShouldWait);
+
+	// Explicitly display the configured screen before seamless travel. Normal
+	// LoadMap also invokes this automatically; seamless travel does not.
+	UFUNCTION(
+		BlueprintCallable,
+		Category = "Async Loading Screen",
+		meta = (WorldContext = "WorldContextObject"))
+	static void StartLoadingScreen(const UObject* WorldContextObject);
 
 	/** Updates the visible stage and the known lower bound of the progress bar. */
 	UFUNCTION(BlueprintCallable, Category = "Async Loading Screen")

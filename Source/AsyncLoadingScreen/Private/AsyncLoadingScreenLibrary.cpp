@@ -8,7 +8,9 @@
 
 
 #include "AsyncLoadingScreenLibrary.h"
+#include "AsyncLoadingScreen.h"
 #include "MoviePlayer.h"
+#include "Engine/Engine.h"
 #include "Engine/Texture2D.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/ConfigCacheIni.h"
@@ -132,6 +134,30 @@ void UAsyncLoadingScreenLibrary::SetWaitForGameplayReady(const bool bShouldWait)
 	bWaitForGameplayReady = bShouldWait;
 }
 
+void UAsyncLoadingScreenLibrary::StartLoadingScreen(
+	const UObject* WorldContextObject)
+{
+	UGameViewportClient* TargetViewport = nullptr;
+	if (GEngine && WorldContextObject)
+	{
+		if (const UWorld* World = GEngine->GetWorldFromContextObject(
+			WorldContextObject,
+			EGetWorldErrorMode::ReturnNull))
+		{
+			if (const FWorldContext* WorldContext =
+				GEngine->GetWorldContextFromWorld(World))
+			{
+				TargetViewport = WorldContext->GameViewport;
+			}
+		}
+	}
+
+	if (FAsyncLoadingScreenModule::IsAvailable())
+	{
+		FAsyncLoadingScreenModule::Get().StartLoadingScreen(TargetViewport);
+	}
+}
+
 void UAsyncLoadingScreenLibrary::BeginLoadingProgressTracking()
 {
 	const FString ProfileKey = StrategicMapLoadingScreenData.bAnchorBackgroundToRight
@@ -245,6 +271,13 @@ void UAsyncLoadingScreenLibrary::StopLoadingScreen()
 			LoadingHistorySection, *SamplesKey, PreviousSamples + 1, GGameUserSettingsIni);
 		GConfig->Flush(false, GGameUserSettingsIni);
 	}
-	GetMoviePlayer()->StopMovie();
+	if (FAsyncLoadingScreenModule::IsAvailable())
+	{
+		FAsyncLoadingScreenModule::Get().StopLoadingScreen();
+	}
+	else
+	{
+		GetMoviePlayer()->StopMovie();
+	}
 }
 

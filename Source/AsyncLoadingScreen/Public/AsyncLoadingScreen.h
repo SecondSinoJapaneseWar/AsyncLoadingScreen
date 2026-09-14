@@ -12,6 +12,9 @@
 #include "Modules/ModuleManager.h"
 
 struct FALoadingScreenSettings;
+struct FWorldContext;
+class UGameViewportClient;
+class SWidget;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogAsyncLoadingScreen, Log, All);
 
@@ -64,6 +67,12 @@ public:
 	 */
 	bool IsStartupLoadingScreen() { return bIsStartupLoadingScreen; }
 
+	/** Explicitly starts a post-startup loading screen (required by seamless travel). */
+	void StartLoadingScreen(UGameViewportClient* TargetViewport = nullptr);
+
+	/** Stops either the runtime movie player or the editor viewport fallback. */
+	void StopLoadingScreen();
+
 private:
 	/**
 	 * Loading screen callback, it won't be called if we've already explicitly setup the loading screen
@@ -79,6 +88,18 @@ private:
 	 * Shuffle the movies list
 	 */
 	void ShuffleMovies(TArray<FString>& MoviesList);
+
+#if WITH_EDITOR
+	void HandleEditorPreLoadMap(
+		const FWorldContext& WorldContext,
+		const FString& MapName);
+	void HandleEditorPostLoadMap(UWorld* LoadedWorld);
+	void ShowEditorLoadingScreen(UGameViewportClient* TargetViewport);
+	void HideEditorLoadingScreen();
+
+	TMap<TWeakObjectPtr<UGameViewportClient>, TSharedPtr<SWidget>>
+		EditorLoadingScreenWidgets;
+#endif
 private:
 
 	bool bIsStartupLoadingScreen = false;

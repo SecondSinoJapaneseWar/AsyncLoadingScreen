@@ -17,7 +17,10 @@
 #include "SStrategicMapLayout.h"
 #include "Framework/Application/SlateApplication.h"
 #include "AsyncLoadingScreenLibrary.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/Texture2D.h"
+#include "UObject/UObjectGlobals.h"
 
 DEFINE_LOG_CATEGORY(LogAsyncLoadingScreen);
 
@@ -33,7 +36,16 @@ void FAsyncLoadingScreenModule::StartupModule()
 		if (IsMoviePlayerEnabled())
 		{
 			GetMoviePlayer()->OnPrepareLoadingScreen().AddRaw(this, &FAsyncLoadingScreenModule::PreSetupLoadingScreen);				
-		}				
+		}
+
+#if WITH_EDITOR
+		FCoreUObjectDelegates::PreLoadMapWithContext.AddRaw(
+			this,
+			&FAsyncLoadingScreenModule::HandleEditorPreLoadMap);
+		FCoreUObjectDelegates::PostLoadMapWithWorld.AddRaw(
+			this,
+			&FAsyncLoadingScreenModule::HandleEditorPostLoadMap);
+#endif
 
 		// Prepare the startup screen, the PreSetupLoadingScreen callback won't be called
 		// if we've already explicitly setup the loading screen
@@ -50,6 +62,12 @@ void FAsyncLoadingScreenModule::ShutdownModule()
 	{
 		GetMoviePlayer()->OnPrepareLoadingScreen().RemoveAll(this);
 	}
+
+#if WITH_EDITOR
+	FCoreUObjectDelegates::PreLoadMapWithContext.RemoveAll(this);
+	FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
+	HideEditorLoadingScreen();
+#endif
 }
 
 bool FAsyncLoadingScreenModule::IsGameModule() const
@@ -67,6 +85,125 @@ void FAsyncLoadingScreenModule::PreSetupLoadingScreen()
 		SetupLoadingScreen(Settings->DefaultLoadingScreen);
 	}	
 }
+
+void FAsyncLoadingScreenModule::StartLoadingScreen(
+	UGameViewportClient* TargetViewport)
+{
+	if (!UAsyncLoadingScreenLibrary::GetIsEnableLoadingScreen()
+		|| !UAsyncLoadingScreenLibrary::IsStrategicMapLoadingScreenEnabled())
+	{
+		return;
+	}
+
+	bIsStartupLoadingScreen = false;
+	const ULoadingScreenSettings* Settings = GetDefault<ULoadingScreenSettings>();
+	if (IsMoviePlayerEnabled())
+	{
+		SetupLoadingScreen(Settings->DefaultLoadingScreen);
+		GetMoviePlayer()->PlayMovie();
+		return;
+	}
+
+#if WITH_EDITOR
+	UAsyncLoadingScreenLibrary::BeginLoadingProgressTracking();
+	ShowEditorLoadingScreen(TargetViewport);
+#else
+	(void)TargetViewport;
+#endif
+}
+
+void FAsyncLoadingScreenModule::StopLoadingScreen()
+{
+	if (IsMoviePlayerEnabled())
+	{
+		GetMoviePlayer()->StopMovie();
+	}
+
+#if WITH_EDITOR
+	HideEditorLoadingScreen();
+#endif
+}
+
+#if WITH_EDITOR
+void FAsyncLoadingScreenModule::HandleEditorPreLoadMap(
+	const FWorldContext& WorldContext,
+	const FString& MapName)
+{
+	(void)MapName;
+	if (WorldContext.WorldType == EWorldType::PIE)
+	{
+		StartLoadingScreen(WorldContext.GameViewport);
+	}
+}
+
+void FAsyncLoadingScreenModule::HandleEditorPostLoadMap(UWorld* LoadedWorld)
+{
+	if ((!LoadedWorld || LoadedWorld->WorldType == EWorldType::PIE)
+		&& !UAsyncLoadingScreenLibrary::IsWaitingForGameplayReady())
+	{
+		HideEditorLoadingScreen();
+	}
+}
+
+void FAsyncLoadingScreenModule::ShowEditorLoadingScreen(
+	UGameViewportClient* TargetViewport)
+{
+	if (!GIsEditor || !FSlateApplication::IsInitialized())
+	{
+		return;
+	}
+
+	TArray<UGameViewportClient*> Viewports;
+	if (TargetViewport)
+	{
+		Viewports.Add(TargetViewport);
+	}
+	else if (GEngine)
+	{
+		for (const FWorldContext& WorldContext : GEngine->GetWorldContexts())
+		{
+			if (WorldContext.WorldType == EWorldType::PIE
+				&& WorldContext.GameViewport)
+			{
+				Viewports.AddUnique(WorldContext.GameViewport);
+			}
+		}
+	}
+
+	const ULoadingScreenSettings* Settings = GetDefault<ULoadingScreenSettings>();
+	for (UGameViewportClient* Viewport : Viewports)
+	{
+		if (!Viewport || EditorLoadingScreenWidgets.Contains(Viewport))
+		{
+			continue;
+		}
+
+		TSharedRef<SWidget> LoadingWidget =
+			SNew(SStrategicMapLayout, Settings->DefaultLoadingScreen);
+		Viewport->AddViewportWidgetContent(LoadingWidget, MAX_int32);
+		EditorLoadingScreenWidgets.Add(Viewport, LoadingWidget);
+		UE_LOG(
+			LogAsyncLoadingScreen,
+			Display,
+			TEXT("Showing strategic loading screen in PIE viewport %s."),
+			*GetNameSafe(Viewport));
+	}
+}
+
+void FAsyncLoadingScreenModule::HideEditorLoadingScreen()
+{
+	for (const TPair<TWeakObjectPtr<UGameViewportClient>, TSharedPtr<SWidget>>& Pair
+		: EditorLoadingScreenWidgets)
+	{
+		if (UGameViewportClient* Viewport = Pair.Key.Get();
+			Viewport && Pair.Value.IsValid())
+		{
+			Viewport->RemoveViewportWidgetContent(Pair.Value.ToSharedRef());
+		}
+	}
+	EditorLoadingScreenWidgets.Reset();
+}
+#endif
 
 void FAsyncLoadingScreenModule::SetupLoadingScreen(const FALoadingScreenSettings& LoadingScreenSettings)
 {
